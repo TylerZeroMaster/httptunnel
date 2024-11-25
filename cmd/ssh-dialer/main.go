@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"time"
 
 	httptunnel "github.com/TylerZeroMaster/http-tunnel"
 	"github.com/docopt/docopt-go"
@@ -22,6 +21,8 @@ Usage:
 `
 
 const bufferSize = 1 << 10
+
+var dialer *httptunnel.Dialer = httptunnel.DefaultDialer
 
 func assertNilErr(err error) {
 	if err != nil {
@@ -39,9 +40,7 @@ func statusIs(status int, ok ...int) error {
 }
 
 func dialSsh(urlString, sshHost, sshPort string) {
-	d := &httptunnel.Dialer{
-		Proxy:            http.ProxyFromEnvironment,
-		HandshakeTimeout: 45 * time.Second,
+	options := &httptunnel.ConnectionOptions{
 		PrepareRequest: func(r *http.Request) error {
 			r.Header.Set("x-ssh-host", sshHost)
 			r.Header.Set("x-ssh-port", sshPort)
@@ -52,19 +51,17 @@ func dialSsh(urlString, sshHost, sshPort string) {
 			return bufio.NewReaderSize(c, bufferSize), nil
 		},
 	}
-	netConn, br, resp, err := d.Dial(urlString)
+	netConn, br, resp, err := dialer.Dial(urlString, options)
 	assertNilErr(err)
 	defer netConn.Close()
 	assertNilErr(statusIs(resp.StatusCode, 101))
-	httpReader := br
-	httpWriter := bufio.NewWriterSize(netConn, bufferSize)
 	go func() {
-		_, err := io.Copy(os.Stdout, httpReader)
+		_, err := io.Copy(os.Stdout, br)
 		if err != nil {
 			panic(err)
 		}
 	}()
-	_, err = io.Copy(httpWriter, os.Stdin)
+	_, err = io.Copy(netConn, os.Stdin)
 	if err != nil {
 		panic(err)
 	}

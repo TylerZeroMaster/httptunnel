@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -13,8 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
-
-const bufferSize = 1 << 10
 
 var log = zerolog.New(os.Stderr).
 	With().
@@ -60,16 +57,14 @@ func (tun HTTPSSHTunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("dial ssh")
 		} else {
 			defer sshConn.Close()
-			sshReader := bufio.NewReaderSize(sshConn, bufferSize)
-			sshWriter := bufio.NewWriterSize(sshConn, bufferSize)
 			go func() {
-				readAmt, err := io.Copy(sshWriter, brw)
+				readAmt, err := io.Copy(sshConn, brw)
 				if err != nil {
 					log.Error().Err(err).Msg("Copy to ssh")
 				}
 				log.Debug().Int64("bytes_read", readAmt).Msg("read finished")
 			}()
-			writeAmt, err := io.Copy(brw, sshReader)
+			writeAmt, err := io.Copy(brw, sshConn)
 			if err != nil {
 				log.Error().Err(err).Msg("Copy to http")
 			}
