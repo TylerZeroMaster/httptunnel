@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -euxo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+
+for main in "$here"/cmd/*/main.go; do echo "$main"; done | \
+awk '{ n = split($0, arr, "/"); print $0"\t"arr[n - 1] }' | \
+while IFS=$'\t' read -r path name; do
+    go build -o "./dist/$name" "$path"
+done
