@@ -42,13 +42,14 @@ func (tun HTTPSSHTunnel) getSSHAddress(r *http.Request) string {
 	return fmt.Sprintf("%s:%s", sshHost, sshPort)
 }
 
+var hijacker = &httptunnel.Hijacker{}
+
 func (tun HTTPSSHTunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	options := &httptunnel.HijackOptions{}
 	log := log.With().Str("connection_id", uuid.NewString()).Logger()
 	log.Info().Msg("Connection opened")
 	defer log.Info().Msg("Connection closed")
 	tun.sendHttpResp(w)
-	if netConn, brw, err := httptunnel.Hijack(w, r, options); err != nil {
+	if netConn, brw, err := hijacker.Hijack(w, r); err != nil {
 		log.Error().Err(err).Msg("hijack")
 		http.Error(w, err.Error(), 500)
 	} else {

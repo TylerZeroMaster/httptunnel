@@ -42,8 +42,6 @@ func dialSsh(urlString, sshHost, sshPort string) {
 	d := &httptunnel.Dialer{
 		Proxy:            http.ProxyFromEnvironment,
 		HandshakeTimeout: 45 * time.Second,
-	}
-	options := &httptunnel.ConnectionOptions{
 		PrepareRequest: func(r *http.Request) error {
 			r.Header.Set("x-ssh-host", sshHost)
 			r.Header.Set("x-ssh-port", sshPort)
@@ -54,7 +52,7 @@ func dialSsh(urlString, sshHost, sshPort string) {
 			return bufio.NewReaderSize(c, bufferSize), nil
 		},
 	}
-	netConn, br, resp, err := d.Dial(urlString, options)
+	netConn, br, resp, err := d.Dial(urlString)
 	assertNilErr(err)
 	defer netConn.Close()
 	assertNilErr(statusIs(resp.StatusCode, 101))

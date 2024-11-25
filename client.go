@@ -56,30 +56,28 @@ type Dialer struct {
 	// If Jar is nil, cookies are not sent in requests and ignored
 	// in responses.
 	Jar http.CookieJar
-}
 
-// Dial creates a new client connection by calling DialContext with a background context.
-func (d *Dialer) Dial(urlStr string, options *ConnectionOptions) (net.Conn, *bufio.Reader, *http.Response, error) {
-	return d.DialContext(context.Background(), urlStr, options)
-}
-
-type ConnectionOptions struct {
 	OverrideGetUrl    func(string) (*url.URL, error)
-	PrepareRequest    func(*http.Request) error
+	PrepareRequest    func(r *http.Request) error
 	OverrideNewReader func(net.Conn) (*bufio.Reader, error)
 }
 
-func (opts ConnectionOptions) GetUrl(urlString string) (*url.URL, error) {
-	if opts.OverrideGetUrl != nil {
-		return opts.OverrideGetUrl(urlString)
+// Dial creates a new client connection by calling DialContext with a background context.
+func (d *Dialer) Dial(urlStr string) (net.Conn, *bufio.Reader, *http.Response, error) {
+	return d.DialContext(context.Background(), urlStr)
+}
+
+func (d *Dialer) GetUrl(urlString string) (*url.URL, error) {
+	if d.OverrideGetUrl != nil {
+		return d.OverrideGetUrl(urlString)
 	} else {
 		return url.Parse(urlString)
 	}
 }
 
-func (opts ConnectionOptions) NewReader(conn net.Conn) (*bufio.Reader, error) {
-	if opts.OverrideNewReader != nil {
-		return opts.OverrideNewReader(conn)
+func (d *Dialer) NewReader(conn net.Conn) (*bufio.Reader, error) {
+	if d.OverrideNewReader != nil {
+		return d.OverrideNewReader(conn)
 	} else {
 		return bufio.NewReader(conn), nil
 	}
@@ -90,12 +88,12 @@ func (opts ConnectionOptions) NewReader(conn net.Conn) (*bufio.Reader, error) {
 // sent.
 //
 // The context will be used in the request and in the Dialer.
-func (d *Dialer) DialContext(ctx context.Context, urlStr string, options *ConnectionOptions) (net.Conn, *bufio.Reader, *http.Response, error) {
+func (d *Dialer) DialContext(ctx context.Context, urlStr string) (net.Conn, *bufio.Reader, *http.Response, error) {
 	if d == nil {
 		panic("nil dialer")
 	}
 
-	u, err := options.GetUrl(urlStr)
+	u, err := d.GetUrl(urlStr)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -118,8 +116,8 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, options *Connec
 		}
 	}
 
-	if options.PrepareRequest != nil {
-		if err := options.PrepareRequest(req); err != nil {
+	if d.PrepareRequest != nil {
+		if err := d.PrepareRequest(req); err != nil {
 			return nil, nil, nil, err
 		}
 	}
@@ -189,7 +187,7 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, options *Connec
 	}
 
 	conn := netConn
-	br, err := options.NewReader(netConn)
+	br, err := d.NewReader(netConn)
 	if err != nil {
 		return nil, nil, nil, err
 	}
