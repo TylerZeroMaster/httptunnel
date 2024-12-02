@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -45,28 +44,28 @@ func (tun HTTPSSHTunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log := log.With().Str("connection_id", uuid.NewString()).Logger()
 	log.Info().Msg("Connection opened")
 	defer log.Info().Msg("Connection closed")
-	tun.sendHttpResp(w)
-	if netConn, brw, err := hijacker.Hijack(w, r); err != nil {
-		log.Error().Err(err).Msg("hijack")
+	address := tun.getSSHAddress(r)
+	log.Debug().Str("address", address).Msg("dialing ssh")
+	if sshConn, err := net.DialTimeout("tcp", address, 45*time.Second); err != nil {
+		log.Error().Err(err).Msg("dial ssh")
 		http.Error(w, err.Error(), 500)
 	} else {
-		defer netConn.Close()
-		address := tun.getSSHAddress(r)
-		log.Debug().Str("address", address).Msg("Dialing ssh")
-		if sshConn, err := net.DialTimeout("tcp", address, 45*time.Second); err != nil {
-			log.Error().Err(err).Msg("dial ssh")
+		defer sshConn.Close()
+		tun.sendHttpResp(w)
+		if netConn, brw, err := hijacker.Hijack(w, r); err != nil {
+			log.Error().Err(err).Msg("hijack")
 		} else {
-			defer sshConn.Close()
+			defer netConn.Close()
 			go func() {
-				readAmt, err := io.Copy(sshConn, brw)
+				readAmt, err := brw.WriteTo(sshConn)
 				if err != nil {
-					log.Error().Err(err).Msg("Copy to ssh")
+					log.Error().Err(err).Msg("copy to ssh")
 				}
 				log.Debug().Int64("bytes_read", readAmt).Msg("read finished")
 			}()
-			writeAmt, err := io.Copy(brw, sshConn)
+			writeAmt, err := brw.ReadFrom(sshConn)
 			if err != nil {
-				log.Error().Err(err).Msg("Copy to http")
+				log.Error().Err(err).Msg("copy to http")
 			}
 			log.Debug().Int64("bytes_written", writeAmt).Msg("write finished")
 		}
