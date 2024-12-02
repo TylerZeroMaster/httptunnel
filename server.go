@@ -9,6 +9,7 @@ import (
 
 var errBadOrigin = errors.New("http-tunnel: request origin not allowed by HijackOptions.checkOrigin")
 
+// TODO: Add more overrides?
 type Hijacker struct {
 	OverrideHandleRequest func(*http.Request) error
 	OverrideCheckOrigin   func(*http.Request) error
@@ -36,9 +37,13 @@ func (h Hijacker) Hijack(
 	if err != nil {
 		return nil, nil, err
 	}
-	// TODO: deadline?
+	// TODO: deadlines?
+	// TODO: handle buffered data?
 	netConn, brw, err := http.NewResponseController(w).Hijack()
 	if err != nil {
+		if netConn != nil {
+			_ = netConn.Close()
+		}
 		return nil, nil, err
 	}
 	return netConn, brw, nil

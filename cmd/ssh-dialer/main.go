@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -44,7 +43,6 @@ func dialSsh(urlString, sshHost, sshPort string) {
 		PrepareRequest: func(r *http.Request) error {
 			r.Header.Set("x-ssh-host", sshHost)
 			r.Header.Set("x-ssh-port", sshPort)
-			r.Header.Set("Origin", "http://localhost/")
 			return nil
 		},
 		OverrideNewReader: func(c net.Conn) (*bufio.Reader, error) {
@@ -56,15 +54,14 @@ func dialSsh(urlString, sshHost, sshPort string) {
 	defer netConn.Close()
 	assertNilErr(statusIs(resp.StatusCode, 101))
 	go func() {
-		_, err := io.Copy(os.Stdout, br)
-		if err != nil {
-			panic(err)
-		}
+		_, err := br.WriteTo(os.Stdout)
+		assertNilErr(err)
 	}()
-	_, err = io.Copy(netConn, os.Stdin)
-	if err != nil {
-		panic(err)
-	}
+	// FIXME: This never dies if the connection fails
+	// I think it gets stuck reading from ssh which gets stuck waiting for a
+	// response (dead lock)
+	_, err = os.Stdin.WriteTo(netConn)
+	assertNilErr(err)
 }
 
 func isInt(s string) error {
