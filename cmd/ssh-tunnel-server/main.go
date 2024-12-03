@@ -5,12 +5,23 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	httptunnel "github.com/TylerZeroMaster/http-tunnel"
+	"github.com/docopt/docopt-go"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
+
+const usage = `Tunnel ssh over http
+
+Usage:
+    ssh-tunnel-server [--port=<port>]
+
+Options:
+	--port=<port>    The port for the http server to listen on [default: 8080]
+`
 
 var log = zerolog.New(os.Stderr).
 	With().
@@ -72,8 +83,30 @@ func (tun HTTPSSHTunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func envOrElse(name string, orElse string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); len(value) > 0 {
+		return value
+	} else {
+		return orElse
+	}
+}
+
+type CLIOptions struct {
+	Port string
+}
+
 func main() {
-	port := ":8080"
+	var options CLIOptions
+	opts, err := docopt.ParseDoc(usage)
+	if err != nil {
+		panic(err)
+	}
+	opts.Bind(&options)
+	port := ":" + strings.TrimLeft(envOrElse("PORT", options.Port), ":")
+	if port == ":" {
+		panic("empty port")
+	}
 	http.Handle("GET /ssh", HTTPSSHTunnel{})
+	log.Info().Str("port", port).Msg("listening")
 	log.Error().Err(http.ListenAndServe(port, nil)).Send()
 }
