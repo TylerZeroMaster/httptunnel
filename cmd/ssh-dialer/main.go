@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 
@@ -18,8 +16,6 @@ Dial ssh over http
 Usage:
     ssh-dialer <http-url> <ssh-host> <ssh-port>
 `
-
-const bufferSize = 1 << 10
 
 var dialer *httptunnel.Dialer = httptunnel.DefaultDialer
 
@@ -44,9 +40,6 @@ func dialSsh(urlString, sshHost, sshPort string) {
 			r.Header.Set("x-ssh-host", sshHost)
 			r.Header.Set("x-ssh-port", sshPort)
 			return nil
-		},
-		OverrideNewReader: func(c net.Conn) (*bufio.Reader, error) {
-			return bufio.NewReaderSize(c, bufferSize), nil
 		},
 	}
 	netConn, br, resp, err := dialer.Dial(urlString, options)
