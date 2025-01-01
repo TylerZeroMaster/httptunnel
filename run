@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+[ -n "${TRACE_ON:-}" ] && set -x
+
+here="$(cd "$(dirname "$0")" && pwd)"
+
+modules=("$here")
+for main in "$here"/cmd/*/main.go; do
+    modules+=("$(dirname "$main")")
+done
+
+_with_dir() {
+    dir="$1"
+    shift
+    pushd "$dir" >/dev/null
+    "$@"
+    popd >/dev/null
+}
+
+_list_commands() {
+    declare -F | awk '$0=$NF' | grep -vE '^_'
+}
+
+_find_command() {
+    _list_commands | grep -xF "$1" &>/dev/null
+}
+
+tidy() {
+    for module in "${modules[@]}"; do
+        name="$(basename "$module")"
+        echo "Tidy $name..." >&2
+        _with_dir "$module" go mod tidy
+    done
+}
+
+build() {
+    build_options=()
+
+    if [[ -n "${STANDALONE:-}" ]]; then
+        export CGO_ENABLED=0
+        build_options+=(-ldflags '-extldflags "-static"')
+        build_options+=(-tags timetzdata)
+        echo "Standalone" >&2
+    fi
+
+    for module in "${modules[@]}"; do
+        if [[ "$module" == "$here" ]]; then continue; fi
+        name="$(basename "$module")"
+        output="$here/dist/$name"
+        echo "Building $name..." >&2
+        _with_dir "$module" go build -o "$output" "${build_options[@]}"
+    done
+}
+
+tests() {
+    dir="${COVER_DIR:-$here/coverage}"
+    cover_file="$dir/coverage.out"
+    cover_html="$dir/index.html"
+
+    mkdir -p "$dir"
+
+    go test -v -coverprofile="$cover_file" ./...
+    go tool cover -html="$cover_file" -o="$cover_html"
+
+    echo "See coverage at $cover_html" >&2
+}
+
+command_name="${1:?'First argument, command name, is required'}"
+shift
+if ! _find_command "$command_name"; then
+    echo "Command not found: $command_name" >&2
+    echo ""
+    echo "Valid commands are:" >&2
+    _list_commands | awk '$0="\t"$0' >&2
+    exit 1
+fi
+
+"$command_name" "$@"

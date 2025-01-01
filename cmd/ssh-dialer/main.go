@@ -1,21 +1,30 @@
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
-	httptunnel "github.com/TylerZeroMaster/http-tunnel"
+	"github.com/TylerZeroMaster/httptunnel"
+	"github.com/TylerZeroMaster/httptunnel/internal/totp"
+	"github.com/TylerZeroMaster/httptunnel/internal/totu"
 	"github.com/docopt/docopt-go"
 )
 
-const usage = `
-Dial ssh over http
+const usage = `Dial ssh over http
 
 Usage:
-    ssh-dialer <http-url> <ssh-host> <ssh-port>
+    ssh-dialer <http-url> <ssh-host> <ssh-port> [--totp-config=<path>]
+
+Options:
+    --totp-config=<path>    Path to TOTP config
 `
+
+var versionString = "Version: " + httptunnel.Version + "\n" + httptunnel.License
 
 var dialer *httptunnel.Dialer = httptunnel.DefaultDialer
 
@@ -42,18 +51,18 @@ func dialSsh(urlString, sshHost, sshPort string) {
 			return nil
 		},
 	}
-	netConn, br, resp, err := dialer.Dial(urlString, options)
+	netConn, _, resp, err := dialer.Dial(urlString, options)
+	tcpConn := httptunnel.AssertTCPConn(netConn)
+
 	assertNilErr(err)
 	defer netConn.Close()
 	assertNilErr(statusIs(resp.StatusCode, 101))
 	go func() {
-		_, err := br.WriteTo(os.Stdout)
+		_, err := tcpConn.WriteTo(os.Stdout)
 		assertNilErr(err)
 	}()
-	// FIXME: This never dies if the connection fails
-	// I think it gets stuck reading from ssh which gets stuck waiting for a
-	// response (dead lock)
-	_, err = os.Stdin.WriteTo(netConn)
+	// TODO: Add deadlines?
+	_, err = tcpConn.ReadFrom(os.Stdin)
 	assertNilErr(err)
 }
 
@@ -66,12 +75,33 @@ func isInt(s string) error {
 	return nil
 }
 
+func subTotpCode(input, totpPath string) (string, error) {
+	config, err := totp.LoadConfig(totpPath)
+	if err != nil {
+		return "", err
+	}
+	code := totu.GenerateCode(time.Now(), config)
+	return strings.ReplaceAll(input, "{{code}}", code), nil
+}
+
+type CLIOptions struct {
+	HTTPUrl    string `docopt:"<http-url>"`
+	SSHHost    string `docopt:"<ssh-host>"`
+	SSHPort    string `docopt:"<ssh-port>"`
+	TotpConfig string
+}
+
 func main() {
-	opts, err := docopt.ParseDoc(usage)
+	var options CLIOptions
+	opts, err := docopt.ParseArgs(usage, os.Args[1:], versionString)
 	assertNilErr(err)
-	urlString := opts["<http-url>"].(string)
-	sshHost := opts["<ssh-host>"].(string)
-	sshPort := opts["<ssh-port>"].(string)
-	assertNilErr(isInt(sshPort))
-	dialSsh(urlString, sshHost, sshPort)
+	opts.Bind(&options)
+	urlString := options.HTTPUrl
+	totpPath := options.TotpConfig
+	assertNilErr(isInt(options.SSHPort))
+	if len(totpPath) > 0 {
+		urlString, err = subTotpCode(urlString, totpPath)
+		assertNilErr(err)
+	}
+	dialSsh(urlString, options.SSHHost, options.SSHPort)
 }

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"fmt"
 	"io"
 	"net"
@@ -107,6 +108,10 @@ func (d *Dialer) DialContext(
 ) (net.Conn, *bufio.Reader, *http.Response, error) {
 	if d == nil {
 		d = &nilDialer
+	}
+
+	if options == nil {
+		options = &ConnectionOptions{}
 	}
 
 	u, err := options.GetUrl(urlStr)
@@ -224,7 +229,7 @@ func (d *Dialer) DialContext(
 			for _, proto := range d.TLSClientConfig.NextProtos {
 				if proto != "http/1.1" {
 					return nil, nil, nil, fmt.Errorf(
-						"http-tunnel: protocol %q was given but is not supported;"+
+						"httptunnel: protocol %q was given but is not supported;"+
 							"sharing tls.Config with net/http Transport can cause this error: %w",
 						proto, err,
 					)
