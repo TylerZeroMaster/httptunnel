@@ -1,17 +1,48 @@
 #!/usr/bin/env bash
 
+# go env -w GOPRIVATE=github.com/...
+
 set -euo pipefail
 
-[ -n "${TRACE_ON:-}" ] && set -x
+if [ -n "${TRACE_ON:-}" ]; then set -x; fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 
-modules=("$here")
-for main in "$here"/cmd/*/main.go; do
-    modules+=("$(dirname "$main")")
-done
+_find_go_files() {
+    find "$1" \
+        -not -path '*/.*' \
+        \( \
+            -type f \
+            \( \
+                -name 'go.mod' -printf "$2$4%p\n" -or \
+                -name 'main.go' -printf "$3$4%p\n" \
+            \) \
+        \)
+}
+
+cover_dir="${COVER_DIR:-$here/coverage}"
+dist_dir="${DIST_DIR:-$here/dist}"
+modules=()
+main_packages=()
+module_type=0
+main_package_type=1
+delim=$'\t'
+while IFS=$delim read -r type args; do
+    case $type in
+        $module_type)
+            modules+=("$(dirname "$args")")
+        ;;
+        $main_package_type)
+            main_packages+=("$args")
+        ;;
+        *)
+            echo "WARNING: Unhandled type \"$type\"" >&2
+        ;;
+    esac
+done < <(_find_go_files "$here" $module_type $main_package_type "$delim")
 
 _with_dir() {
+    local dir
     dir="$1"
     shift
     pushd "$dir" >/dev/null
@@ -28,14 +59,17 @@ _find_command() {
 }
 
 tidy() {
+    local name
     for module in "${modules[@]}"; do
         name="$(basename "$module")"
         echo "Tidy $name..." >&2
-        _with_dir "$module" go mod tidy
+        _with_dir "$module" \
+            go mod tidy
     done
 }
 
 build() {
+    local build_options dir name output
     build_options=()
 
     if [[ -n "${STANDALONE:-}" ]]; then
@@ -45,26 +79,58 @@ build() {
         echo "Standalone" >&2
     fi
 
-    for module in "${modules[@]}"; do
-        if [[ "$module" == "$here" ]]; then continue; fi
-        name="$(basename "$module")"
-        output="$here/dist/$name"
+    mkdir -p "$dist_dir"
+    for main in "${main_packages[@]}"; do
+        dir="$(dirname "$main")"
+        name="$(basename "$dir")"
+        output="$dist_dir/$name"
         echo "Building $name..." >&2
-        _with_dir "$module" go build -o "$output" "${build_options[@]}"
+        _with_dir "$dir" \
+            go build -o "$output" "${build_options[@]}"
     done
 }
 
 tests() {
-    dir="${COVER_DIR:-$here/coverage}"
-    cover_file="$dir/coverage.out"
-    cover_html="$dir/index.html"
+    local cover_file cover_html open_html test_opts cover_opts
+    cover_file="$cover_dir/coverage.out"
+    cover_html="$cover_dir/index.html"
+    open_html=0
+    test_opts=()
+    cover_opts=()
+    while test -n "${1:-}"; do
+        case "$1" in
+            --open-html)
+                open_html=1
+            ;;
+            --verbose|-v)
+                test_opts+=(-v)
+            ;;
+            *)
+                echo "Unknown option: $1" >&2
+                exit 1
+            ;;
+        esac
+        shift
+    done
+    mkdir -p "$cover_dir"
 
-    mkdir -p "$dir"
-
-    go test -v -coverprofile="$cover_file" ./...
-    go tool cover -html="$cover_file" -o="$cover_html"
+    _with_dir "$here" \
+        go test "${test_opts[@]}" -coverprofile="$cover_file" ./...
+    _with_dir "$here" \
+        go tool cover "${cover_opts[@]}" -html="$cover_file" -o="$cover_html"
 
     echo "See coverage at $cover_html" >&2
+
+    if [ $open_html -eq 1 ]; then open $cover_html; fi
+}
+
+scaffold() {
+    if [ ! -e .gitignore ]; then
+        for f in "$dist_dir" "$cover_dir" .env; do basename "$f"; done > .gitignore
+    fi
+    for f in README.md LICENSE; do
+        if [ ! -e "$f" ]; then touch "$f"; fi
+    done
 }
 
 command_name="${1:?'First argument, command name, is required'}"
