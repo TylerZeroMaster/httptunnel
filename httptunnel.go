@@ -2,7 +2,7 @@ package httptunnel
 
 import _ "embed"
 
-const Version = "0.1.0"
+const Version = "0.1.1"
 
 //go:embed LICENSE
 var license string

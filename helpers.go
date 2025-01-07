@@ -254,11 +254,3 @@ func checkSameOrigin(r *http.Request) bool {
 	}
 	return equalASCIIFold(u.Host, r.Host)
 }
-
-func AssertTCPConn(conn net.Conn) *net.TCPConn {
-	if tcpConn, ok := conn.(*net.TCPConn); !ok {
-		panic("Not a tcp conn")
-	} else {
-		return tcpConn
-	}
-}
